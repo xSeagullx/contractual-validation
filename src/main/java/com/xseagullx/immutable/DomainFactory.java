@@ -1,66 +1,138 @@
 package com.xseagullx.immutable;
 
+import lombok.Getter;
+import lombok.RequiredArgsConstructor;
+import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
-import org.aopalliance.aop.Advice;
 import org.aopalliance.intercept.MethodInterceptor;
 import org.springframework.aop.Advisor;
-import org.springframework.aop.MethodBeforeAdvice;
+import org.springframework.aop.ProxyMethodInvocation;
 import org.springframework.aop.framework.ProxyFactory;
 import org.springframework.aop.support.DefaultPointcutAdvisor;
 import org.springframework.aop.support.JdkRegexpMethodPointcut;
+import org.springframework.beans.BeanUtils;
+import org.springframework.beans.BeanWrapper;
+import org.springframework.beans.PropertyAccessorFactory;
+import org.springframework.util.ClassUtils;
 
+import java.beans.Introspector;
+import java.beans.PropertyDescriptor;
+import java.lang.reflect.Method;
+import java.lang.reflect.Modifier;
 import java.util.HashSet;
 import java.util.Set;
 import java.util.function.Consumer;
 
+class Contract {
+	void enforce(DomainState domainState) {
+	}
+}
+
+@Getter
+@RequiredArgsConstructor
+class DomainState {
+	private final Contract contract;
+	private final Set<String> touchedProperties = new HashSet<>();
+	@Setter private Object domainRoot;
+
+	@Setter private boolean closed = true;
+}
+
 @Slf4j
 public class DomainFactory {
-	private final Advice readOnlyAdvice = (MethodBeforeAdvice) (method, args, target) -> {
-		log.info("about to call method " + method + " on immutable object. Stop");
-		throw new DomainIsReadOnlyException(method.getName());
-	};
-
 	public <T> T toImmutable(T unwrappedDomain) {
-		ProxyFactory factory = new ProxyFactory(unwrappedDomain);
-		factory.setProxyTargetClass(true);
-
-		factory.addAdvisors(getReadOnlyAdvisor(), getWithWritableAdvisor(unwrappedDomain));
-		//noinspection unchecked
-		return (T) factory.getProxy();
+		return toImmutable(unwrappedDomain, new Contract());
 	}
 
-	private <T> Advisor getWithWritableAdvisor(T unwrappedDomain) {
-		HashSet<String> touchedProperties = new HashSet<>();
+	public <T> T toImmutable(T unwrappedDomain, Contract contract) {
+		return toImmutable(unwrappedDomain, new DomainState(contract));
+	}
 
-		ProxyFactory factory = new ProxyFactory(unwrappedDomain);
-		factory.addInterface(Validating.class);
+	private <T> T toImmutable(T unwrappedDomain, DomainState domainState) {
+		BeanWrapper beanWrapper = PropertyAccessorFactory.forBeanPropertyAccess(unwrappedDomain);
+		for (PropertyDescriptor property : beanWrapper.getPropertyDescriptors()) {
+			Object propertyValue = beanWrapper.getPropertyValue(property.getName());
+			if (shouldProxy(propertyValue)) {
+				Object proxy = makeImmutable(propertyValue, domainState, property.getName());
+				beanWrapper.setPropertyValue(property.getName(), proxy);
+			}
+		}
+		//noinspection unchecked
+		T proxy = (T) makeImmutable(unwrappedDomain, domainState, null);
+		domainState.setDomainRoot(proxy);
+		return proxy;
+	}
+
+	private Object makeImmutable(Object object, DomainState domainState, String path) {
+		ProxyFactory factory = new ProxyFactory(object);
 		factory.setProxyTargetClass(true);
-		factory.addAdvisors(getTrackingAdvice(touchedProperties), getTouchedPropertiesAdvice(touchedProperties));
+		factory.addInterface(Immutable.class);
+		factory.addInterface(Validating.class);
 
+		factory.addAdvisors(getSetterControlAdvisor(domainState, path));
+		factory.addAdvisors(getTouchedPropertiesAdvice(domainState));
+		if (object instanceof HasWithWritable)
+			factory.addAdvisor(getWithWritableAdvisor(domainState));
+		return factory.getProxy();
+	}
+
+	private Advisor getSetterControlAdvisor(DomainState domainState, String path) {
 		JdkRegexpMethodPointcut pointcut = new JdkRegexpMethodPointcut();
-		pointcut.setPattern(".*withWritable.*");
+		pointcut.setPattern(".*set.*");
 		return new DefaultPointcutAdvisor(pointcut, (MethodInterceptor) invocation -> {
-			//noinspection unchecked
-			((Consumer)invocation.getArguments()[0]).accept(factory.getProxy());
-			return invocation.getThis();
+			if (domainState.isClosed()) {
+				log.info("about to call method " + invocation.getMethod() + " on immutable object. Stop");
+				throw new DomainIsReadOnlyException(invocation.getMethod().getName());
+			} else {
+				// If object we are adding is not proxied - proxy it.
+				Object valueToSet = invocation.getArguments()[0];
+				String propertyPath = (path == null ? "" : path + ".") + getPropertyName(invocation.getMethod());
+				if (shouldProxy(valueToSet)) {
+					invocation.getArguments()[0] = makeImmutable(valueToSet, domainState, propertyPath);
+				}
+				domainState.getTouchedProperties().add(propertyPath);
+				return invocation.proceed();
+			}
 		});
 	}
 
-	private DefaultPointcutAdvisor getReadOnlyAdvisor() {
+	private <T> Advisor getWithWritableAdvisor(DomainState domainState) {
 		JdkRegexpMethodPointcut pointcut = new JdkRegexpMethodPointcut();
-		pointcut.setPattern(".*set.*");
-		return new DefaultPointcutAdvisor(pointcut, readOnlyAdvice);
+		pointcut.setPattern(".*withWritable.*");
+		return new DefaultPointcutAdvisor(pointcut, (MethodInterceptor) invocation -> {
+			if (!(invocation instanceof ProxyMethodInvocation))
+				throw new IllegalStateException("This interceptor should be only called with ProxyMethodInvocation");
+
+			ProxyMethodInvocation proxyMethodInvocation = (ProxyMethodInvocation) invocation;
+			domainState.setClosed(false); // Open object for modifications
+
+			//noinspection unchecked
+			((Consumer)invocation.getArguments()[0]).accept(proxyMethodInvocation.getProxy());
+
+			// Make Domain immutable again
+			domainState.setClosed(true);
+			domainState.getContract().enforce(domainState);
+			domainState.getTouchedProperties().clear();
+			return proxyMethodInvocation.getProxy();
+		});
 	}
 
-	private DefaultPointcutAdvisor getTrackingAdvice(Set<String> touchedProperties) {
-		JdkRegexpMethodPointcut pointcut = new JdkRegexpMethodPointcut();
-		pointcut.setPattern(".*set.*");
-		return new DefaultPointcutAdvisor(pointcut, (MethodBeforeAdvice) (method, args, target) -> touchedProperties.add(method.getName()));
-	}
-
-	private DefaultPointcutAdvisor getTouchedPropertiesAdvice(Set<String> touchedProperties) {
+	private DefaultPointcutAdvisor getTouchedPropertiesAdvice(DomainState domainState) {
 		JdkRegexpMethodPointcut pointcut = new JdkRegexpMethodPointcut();
 		pointcut.setPattern(".*getTouchedProperties()");
-		return new DefaultPointcutAdvisor(pointcut, (MethodInterceptor) invocation -> touchedProperties);
+		return new DefaultPointcutAdvisor(pointcut, (MethodInterceptor) invocation -> domainState.getTouchedProperties());
+	}
+
+	private boolean shouldProxy(Object valueToSet) {
+		if (valueToSet == null)
+			return false;
+		Class<?> clazz = valueToSet.getClass();
+		return !ClassUtils.isPrimitiveOrWrapper(clazz)
+				&& !BeanUtils.isSimpleValueType(clazz)
+				&& !Modifier.isFinal(clazz.getModifiers());
+	}
+
+	private String getPropertyName(Method method) {
+		return Introspector.decapitalize(method.getName().substring(3));
 	}
 }

@@ -5,7 +5,6 @@ import lombok.Setter;
 
 @Setter
 @Getter
-@ImmutableDomain
-public class TestDomain implements Immutable<TestDomain> {
+public class TestDomain implements HasWithWritable<TestDomain> {
 	String firstName;
 }

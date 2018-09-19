@@ -2,8 +2,13 @@ package com.xseagullx.immutable
 
 import spock.lang.Specification
 
-class DomainFactorySpec extends Specification {
+class SingleClassSpec extends Specification {
 	def domainFactory = new DomainFactory()
+
+	void "wrapped classes implement Immutable marker interface" () {
+		expect:
+			domainFactory.toImmutable(new TestDomain()) instanceof Immutable
+	}
 
 	void "withWritable does not work for naked instances" () {
 		when:
@@ -44,7 +49,7 @@ class DomainFactorySpec extends Specification {
 		expect:
 			domain.withWritable {
 				it.setFirstName("Blah-Blah")
-				assert (it as Validating).touchedProperties == ["setFirstName"].toSet()
+				assert (it as Validating).touchedProperties == ["firstName"].toSet()
 			}
 	}
 
