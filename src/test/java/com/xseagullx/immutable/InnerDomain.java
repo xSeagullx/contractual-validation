@@ -1,11 +1,12 @@
 package com.xseagullx.immutable;
 
+import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.Setter;
 
 @Getter
 @Setter
-public class NestedDomain implements HasWithWritable<NestedDomain> {
-	NestingDomain nesting;
+@AllArgsConstructor
+public class InnerDomain {
+	String value;
 }
-

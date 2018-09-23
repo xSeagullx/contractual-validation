@@ -25,5 +25,6 @@ dependencies {
     testCompileOnly 'org.projectlombok:lombok:1.18.2'
 
     testCompile 'cglib:cglib-nodep:3.2.8'
+    testCompile 'org.objenesis:objenesis:2.6'
     testCompile 'org.spockframework:spock-core:1.1-groovy-2.4'
 }

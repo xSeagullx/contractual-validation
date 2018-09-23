@@ -7,58 +7,58 @@ class NestedDomainsSpec extends Specification {
 
 	void "outer setter is not accessible"() {
 		given:
-			def domain = domainFactory.toImmutable(new NestedDomain(nesting: new NestingDomain("test")))
+			def domain = domainFactory.toImmutable(new OuterDomain(innerDomain: new InnerDomain("test")))
 		when:
-			domain.setNesting(new NestingDomain())
+			domain.setInnerDomain(new InnerDomain())
 		then:
 			thrown DomainIsReadOnlyException
 	}
 
 	void "nested setter is not accessible"() {
 		given:
-			def domain = domainFactory.toImmutable(new NestedDomain(nesting: new NestingDomain("test")))
+			def domain = domainFactory.toImmutable(new OuterDomain(innerDomain: new InnerDomain("test")))
 		when:
-			domain.getNesting().setValue("Hey")
+			domain.getInnerDomain().setValue("Hey")
 		then:
 			thrown DomainIsReadOnlyException
 	}
 
 	void "nested setter is accessible when withWritable is called"() {
 		given:
-			def domain = domainFactory.toImmutable(new NestedDomain(nesting: new NestingDomain("test")))
+			def domain = domainFactory.toImmutable(new OuterDomain(innerDomain: new InnerDomain("test")))
 		when:
 			domain.withWritable {
-				it.getNesting().setValue("Hey")
+				it.getInnerDomain().setValue("Hey")
 			}
 
 		then:
-			domain.nesting.value == "Hey"
+			domain.innerDomain.value == "Hey"
 	}
 
 	void "withWritable wraps newly created nesting class in proxy"() {
 		given:
-			def domain = domainFactory.toImmutable(new NestedDomain(nesting: new NestingDomain("test")))
+			def domain = domainFactory.toImmutable(new OuterDomain(innerDomain: new InnerDomain("test")))
 		when:
 			domain.withWritable {
-				it.setNesting(new NestingDomain("lol"))
+				it.setInnerDomain(new InnerDomain("lol"))
 			}
 
 		then:
-			domain.nesting instanceof Immutable
+			domain.innerDomain instanceof Immutable
 	}
 
 	void "withWritable collects nested domain updates"() {
 		given:
-			def domain = domainFactory.toImmutable(new NestedDomain(nesting: new NestingDomain("test")))
+			def domain = domainFactory.toImmutable(new OuterDomain(innerDomain: new InnerDomain("test")))
 		when:
 			domain.withWritable {
-				it.setNesting(new NestingDomain("lol"))
+				it.setInnerDomain(new InnerDomain("lol"))
 				assert (it as Validating).touchedProperties == ['nesting'].toSet()
-				it.nesting.value = "Hey"
-				assert (it.nesting as Validating).touchedProperties == ['nesting', 'nesting.value'].toSet()
+				it.innerDomain.value = "Hey"
+				assert (it.innerDomain as Validating).touchedProperties == ['nesting', 'nesting.value'].toSet()
 			}
 
 		then:
-			domain.nesting instanceof Immutable
+			domain.innerDomain instanceof Immutable
 	}
 }

@@ -37,10 +37,10 @@ class ValidationSpec extends Specification {
 	void "contract is knows about updated nesting properties"() {
 		given:
 			def contract = Mock(Contract)
-			def domain = domainFactory.toImmutable(new NestedDomain(nesting: new NestingDomain("Hello")), contract)
+			def domain = domainFactory.toImmutable(new OuterDomain(innerDomain: new InnerDomain("Hello")), contract)
 		when:
 			domain.withWritable({
-				it.getNesting().value = "123"
+				it.getInnerDomain().value = "123"
 			})
 		then:
 			1 * contract.enforce(_) >> { DomainState it ->
@@ -52,9 +52,9 @@ class ValidationSpec extends Specification {
 	void "if nesting object is HasWithWritable we can withWritable it, but it'll still use outer object as domainRoot"() {
 		given:
 			def contract = Mock(Contract)
-			def domain = domainFactory.toImmutable(new NestedDomain(nesting: new NestingDomainWithWritable("Hello")), contract)
+			def domain = domainFactory.toImmutable(new OuterDomain(innerDomain: new NestingDomainWithWritable("Hello")), contract)
 		when:
-			(domain.getNesting() as HasWithWritable<NestingDomainWithWritable>).withWritable({ it ->
+			(domain.getInnerDomain() as HasWithWritable<NestingDomainWithWritable>).withWritable({ it ->
 				it.value = "abc"
 			})
 		then:
