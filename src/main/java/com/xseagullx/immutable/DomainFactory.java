@@ -12,6 +12,8 @@ import org.springframework.aop.support.DefaultPointcutAdvisor;
 import org.springframework.aop.support.JdkRegexpMethodPointcut;
 import org.springframework.beans.BeanUtils;
 import org.springframework.beans.BeanWrapper;
+import org.springframework.beans.ConfigurablePropertyAccessor;
+import org.springframework.beans.NotReadablePropertyException;
 import org.springframework.beans.PropertyAccessorFactory;
 import org.springframework.util.ClassUtils;
 
@@ -50,18 +52,36 @@ public class DomainFactory {
 	}
 
 	private <T, E> T toImmutable(T unwrappedDomain, DomainState<T, E> domainState) {
-		BeanWrapper beanWrapper = PropertyAccessorFactory.forBeanPropertyAccess(unwrappedDomain);
-		for (PropertyDescriptor property : beanWrapper.getPropertyDescriptors()) {
-			Object propertyValue = beanWrapper.getPropertyValue(property.getName());
-			if (shouldProxy(propertyValue)) {
-				Object proxy = makeImmutable(propertyValue, domainState, property.getName());
-				beanWrapper.setPropertyValue(property.getName(), proxy);
-			}
-		}
 		//noinspection unchecked
-		T proxy = (T) makeImmutable(unwrappedDomain, domainState, null);
+		T proxy = (T) proxyNestedFields(unwrappedDomain, domainState, null);
 		domainState.setDomainRoot(proxy);
 		return proxy;
+	}
+
+	private <T, E> Object proxyNestedFields(Object unwrappedDomain, DomainState<T, E> domainState, String path) {
+		BeanWrapper beanWrapper = PropertyAccessorFactory.forBeanPropertyAccess(unwrappedDomain);
+		ConfigurablePropertyAccessor directFieldAccess = PropertyAccessorFactory.forDirectFieldAccess(unwrappedDomain);
+		for (PropertyDescriptor property : beanWrapper.getPropertyDescriptors()) {
+			Object propertyValue = getValue(beanWrapper, directFieldAccess, property.getName());
+			if (shouldProxy(propertyValue)) {
+				Object proxy = proxyNestedFields(propertyValue, domainState, (path == null ? "" : path + ".") + property.getName());
+				directFieldAccess.setPropertyValue(property.getName(), proxy);
+			}
+		}
+		return makeImmutable(unwrappedDomain, domainState, path);
+	}
+
+	private Object getValue(BeanWrapper propertyAccessor, ConfigurablePropertyAccessor fieldAccessor, String name) {
+		try {
+			return propertyAccessor.getPropertyValue(name);
+		}
+		catch (NotReadablePropertyException ignored) {
+			return fieldAccessor.getPropertyValue(name);
+		}
+		catch (Exception ignored) {
+			log.warn("Can't access getter for {} {}. Do you have getters with side effects?", propertyAccessor.getWrappedClass(), name);
+			return fieldAccessor.getPropertyValue(name);
+		}
 	}
 
 	private Object makeImmutable(Object object, DomainState domainState, String path) {
@@ -81,13 +101,13 @@ public class DomainFactory {
 		JdkRegexpMethodPointcut pointcut = new JdkRegexpMethodPointcut();
 		pointcut.setPattern(".*set.*");
 		return new DefaultPointcutAdvisor(pointcut, (MethodInterceptor) invocation -> {
+			String propertyPath = (path == null ? "" : path + ".") + getPropertyName(invocation.getMethod());
 			if (domainState.isClosed()) {
 				log.info("about to call method " + invocation.getMethod() + " on immutable object. Stop");
-				throw new DomainIsReadOnlyException(invocation.getMethod().getName());
+				throw new DomainIsReadOnlyException(propertyPath);
 			} else {
 				// If object we are adding is not proxied - proxy it.
 				Object valueToSet = invocation.getArguments()[0];
-				String propertyPath = (path == null ? "" : path + ".") + getPropertyName(invocation.getMethod());
 				if (shouldProxy(valueToSet)) {
 					invocation.getArguments()[0] = makeImmutable(valueToSet, domainState, propertyPath);
 				}

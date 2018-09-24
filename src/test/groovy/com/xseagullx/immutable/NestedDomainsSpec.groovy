@@ -61,4 +61,18 @@ class NestedDomainsSpec extends Specification {
 		then:
 			domain.innerDomain instanceof Immutable
 	}
+
+	void "recursive proxying works"() {
+		given:
+			def domain = domainFactory.toImmutable(new OuterOuterDomain(new OuterDomain(innerDomain: new InnerDomain("abc"))))
+		expect:
+			domain instanceof Immutable
+			domain.outerDomain instanceof Immutable
+			domain.outerDomain.innerDomain instanceof Immutable
+		when:
+			domain.outerDomain.innerDomain.value = "123"
+		then:
+			def exception = thrown(DomainIsReadOnlyException)
+			exception.fieldName == "outerDomain.innerDomain.value"
+	}
 }
