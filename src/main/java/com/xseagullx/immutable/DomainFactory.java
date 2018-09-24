@@ -21,40 +21,14 @@ import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.util.Collections;
 import java.util.HashSet;
-import java.util.List;
 import java.util.Set;
 import java.util.function.Consumer;
-import java.util.function.Function;
-import java.util.stream.Stream;
-
-/** T - Domain type. E - Error type */
-@RequiredArgsConstructor
-class Contract<T, E> {
-	private final List<Rule<T,E>> rules;
-	private final ErrorHandlingStrategy<E> errorHandlingStrategy;
-
-	void enforce(DomainState<T, E> domainState) {
-		Set<Function> checkedRules = new HashSet<>();
-		domainState
-				.getTouchedProperties()
-				.stream()
-				.flatMap(this::getRules)
-				.map(Rule::getCheck)
-				.filter(it -> !checkedRules.contains(it))
-				.map(it -> { checkedRules.add(it); return it; })
-				.map(it -> it.apply(domainState.getDomainRoot()))
-				.forEach(errorHandlingStrategy::handle);
-	}
-
-	private Stream<Rule<T, E>> getRules(String touchedProperty) {
-		return rules.stream().filter(it -> touchedProperty.equals(it.getField()));
-	}
-}
 
 @Getter
 @RequiredArgsConstructor
 class DomainState<T, E> {
 	private final Contract<T, E> contract;
+	private final ErrorHandlingStrategy<E> errorHandlingStrategy;
 	private final Set<String> touchedProperties = new HashSet<>();
 	@Setter private T domainRoot;
 
@@ -64,15 +38,15 @@ class DomainState<T, E> {
 @Slf4j
 public class DomainFactory {
 	public <T> T toImmutable(T unwrappedDomain) {
-		return toImmutable(unwrappedDomain, new Contract<>(Collections.emptyList(), validationResult -> {
+		return toImmutable(unwrappedDomain, new Contract<>(Collections.emptyList()), validationResult -> {
 			if (validationResult != null) {
 				throw new RuntimeException("Failed validation " + validationResult);
 			}
-		}));
+		});
 	}
 
-	public <T, E> T toImmutable(T unwrappedDomain, Contract<T, E> contract) {
-		return toImmutable(unwrappedDomain, new DomainState<>(contract));
+	public <T, E> T toImmutable(T unwrappedDomain, Contract<T, E> contract, ErrorHandlingStrategy<E> errorHandlingStrategy) {
+		return toImmutable(unwrappedDomain, new DomainState<>(contract, errorHandlingStrategy));
 	}
 
 	private <T, E> T toImmutable(T unwrappedDomain, DomainState<T, E> domainState) {
@@ -150,6 +124,7 @@ public class DomainFactory {
 		return new DefaultPointcutAdvisor(pointcut, (MethodInterceptor) invocation -> domainState.getTouchedProperties());
 	}
 
+	// TODO extract to a strategy class
 	private boolean shouldProxy(Object valueToSet) {
 		if (valueToSet == null)
 			return false;

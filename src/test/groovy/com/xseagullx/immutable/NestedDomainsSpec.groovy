@@ -53,9 +53,9 @@ class NestedDomainsSpec extends Specification {
 		when:
 			domain.withWritable {
 				it.setInnerDomain(new InnerDomain("lol"))
-				assert (it as Validating).touchedProperties == ['nesting'].toSet()
+				assert (it as Validating).touchedProperties == ['innerDomain'].toSet()
 				it.innerDomain.value = "Hey"
-				assert (it.innerDomain as Validating).touchedProperties == ['nesting', 'nesting.value'].toSet()
+				assert (it.innerDomain as Validating).touchedProperties == ['innerDomain', 'innerDomain.value'].toSet()
 			}
 
 		then:

@@ -52,7 +52,4 @@ class SingleClassSpec extends Specification {
 				assert (it as Validating).touchedProperties == ["firstName"].toSet()
 			}
 	}
-
-	// todo validate
-	// todo hydrate
 }

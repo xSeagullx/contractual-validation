@@ -11,7 +11,7 @@ class ContractSpec extends Specification {
 			def rule = new Rule<>("firstName", { TestDomain domain -> domain.firstName == "Abc" ? Optional.of("Abc is not a name") : Optional.empty() })
 
 			def domain = new TestDomain(firstName: "Pavel")
-			def contract = new Contract<TestDomain, Optional<String>>([rule], errorHandlingStrategy)
+			def contract = new Contract<TestDomain, Optional<String>>([rule])
 		when:
 			contract.enforce(domainState(contract, domain, "lastName"))
 		then:
@@ -23,7 +23,7 @@ class ContractSpec extends Specification {
 			def rule = new Rule<>("firstName", { TestDomain domain -> domain.firstName == "Abc" ? Optional.of("Abc is not a name") : Optional.empty() })
 
 			def domain = new TestDomain(firstName: "Pavel")
-			def contract = new Contract<TestDomain, Optional<String>>([rule], errorHandlingStrategy)
+			def contract = new Contract<TestDomain, Optional<String>>([rule])
 		when:
 			contract.enforce(domainState(contract, domain, "firstName"))
 		then:
@@ -35,7 +35,7 @@ class ContractSpec extends Specification {
 			def rule = new Rule<>("firstName", { TestDomain domain -> domain.firstName == "Abc" ? Optional.of("Abc is not a name") : Optional.empty() })
 
 			def domain = new TestDomain(firstName: "Abc")
-			def contract = new Contract<TestDomain, Optional<String>>([rule], errorHandlingStrategy)
+			def contract = new Contract<TestDomain, Optional<String>>([rule])
 		when:
 			contract.enforce(domainState(contract, domain, "firstName"))
 		then:
@@ -48,7 +48,7 @@ class ContractSpec extends Specification {
 			def rule2 = new Rule<>("firstName", { TestDomain domain -> domain.firstName == "Abc" ? Optional.of("Abc is not a name") : Optional.empty() })
 
 			def domain = new TestDomain(firstName: "Abc")
-			def contract = new Contract<TestDomain, Optional<String>>([rule1, rule2], errorHandlingStrategy)
+			def contract = new Contract<TestDomain, Optional<String>>([rule1, rule2])
 		when:
 			contract.enforce(domainState(contract, domain, "firstName"))
 		then:
@@ -65,7 +65,7 @@ class ContractSpec extends Specification {
 			def rule3 = new Rule("innerDomain.value", check)
 			def domain = new OuterDomain(outerValue: "foo", innerDomain: new InnerDomain("foo"))
 
-			def contract = new Contract<OuterDomain, String>([rule1, rule2, rule3], errorHandlingStrategy)
+			def contract = new Contract<OuterDomain, String>([rule1, rule2, rule3])
 		when:
 			contract.enforce(domainState(contract, domain, *touchedProperties))
 		then:
@@ -75,7 +75,7 @@ class ContractSpec extends Specification {
 	}
 
 	private <T> DomainState domainState(Contract contract, T domain, String ... touchedProperties) {
-		def domainState = new DomainState(contract)
+		def domainState = new DomainState(contract, errorHandlingStrategy)
 		domainState.domainRoot = domain
 		domainState.touchedProperties.addAll(touchedProperties)
 		domainState

@@ -8,7 +8,7 @@ class ValidationSpec extends Specification {
 	void "contract is being enforced after withWritable"() {
 		given:
 			def contract = Mock(Contract)
-			def domain = domainFactory.toImmutable(new TestDomain(), contract)
+			def domain = domainFactory.toImmutable(new TestDomain(), contract, null)
 		when:
 			domain.withWritable({})
 		then:
@@ -21,7 +21,7 @@ class ValidationSpec extends Specification {
 	void "contract is knows about updated properties"() {
 		given:
 			def contract = Mock(Contract)
-			def domain = domainFactory.toImmutable(new TestDomain(), contract)
+			def domain = domainFactory.toImmutable(new TestDomain(), contract, null)
 		when:
 			domain.withWritable({
 				it.setFirstName("abc")
@@ -37,7 +37,7 @@ class ValidationSpec extends Specification {
 	void "contract is knows about updated nesting properties"() {
 		given:
 			def contract = Mock(Contract)
-			def domain = domainFactory.toImmutable(new OuterDomain(innerDomain: new InnerDomain("Hello")), contract)
+			def domain = domainFactory.toImmutable(new OuterDomain(innerDomain: new InnerDomain("Hello")), contract, null)
 		when:
 			domain.withWritable({
 				it.getInnerDomain().value = "123"
@@ -45,14 +45,14 @@ class ValidationSpec extends Specification {
 		then:
 			1 * contract.enforce(_) >> { DomainState it ->
 				assert it.domainRoot == domain
-				assert it.touchedProperties == ["nesting.value"].toSet()
+				assert it.touchedProperties == ["innerDomain.value"].toSet()
 			}
 	}
 
 	void "if nesting object is HasWithWritable we can withWritable it, but it'll still use outer object as domainRoot"() {
 		given:
 			def contract = Mock(Contract)
-			def domain = domainFactory.toImmutable(new OuterDomain(innerDomain: new NestingDomainWithWritable("Hello")), contract)
+			def domain = domainFactory.toImmutable(new OuterDomain(innerDomain: new NestingDomainWithWritable("Hello")), contract, null)
 		when:
 			(domain.getInnerDomain() as HasWithWritable<NestingDomainWithWritable>).withWritable({ it ->
 				it.value = "abc"
@@ -60,7 +60,7 @@ class ValidationSpec extends Specification {
 		then:
 			1 * contract.enforce(_) >> { DomainState it ->
 				assert it.domainRoot == domain
-				assert it.touchedProperties == ["nesting.value"].toSet()
+				assert it.touchedProperties == ["innerDomain.value"].toSet()
 			}
 	}
 }
