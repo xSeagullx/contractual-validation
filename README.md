@@ -3,7 +3,7 @@
 ## Behaviour
 1. Domain validation is defined separately from the data. Validation rules are using current values of the domain fields.
 2. Validation is being triggered automatically when domain is mutated. Mutations are encapsulated in a lambda, and are "atomic" from the viewpoint of contract. i.e. we only guarantee validity before the mutation and after the mutation, but not during the mutation.
-3. Any setter access outside of 
+3. Any setter access outside of withWritable should throw an exception.
 
 ## To think
 1. How idea of "always having a correct domain" plays with the need to load domain from DB as-is (assuming we have data that is no longer valid).
